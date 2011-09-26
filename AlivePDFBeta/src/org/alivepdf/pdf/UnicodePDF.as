@@ -10,6 +10,7 @@ package org.alivepdf.pdf
 	import org.alivepdf.fonts.ICidFont;
 	import org.alivepdf.fonts.IFont;
 	import org.alivepdf.layout.Size;
+	import org.alivepdf.links.ILink;
 
 	public class UnicodePDF extends PDF
 	{
@@ -22,15 +23,24 @@ package org.alivepdf.pdf
 		public function get isUnicode():Boolean { return _isUnicode; }
 		public function set isUnicode(value:Boolean):void { _isUnicode = value; }	
 		
-		public function UnicodePDF(orientation:String='Portrait', unit:String='Mm', pageSize:Size=null, rotation:int=0)
+		public function UnicodePDF(orientation:String='Portrait', unit:String='Mm', autoPageBreak:Boolean=true, pageSize:Size=null, rotation:int=0)
 		{
-			super(orientation, unit, pageSize, rotation);
+			super(orientation, unit, autoPageBreak, pageSize, rotation);
+		}
+		
+		public override function writeFlashHtmlText ( pHeight:Number, pText:String, pLink:ILink=null ):void
+		{
+			throw new Error("writeFlashHtmlText is not available with the UnicodePDF class.");
 		}
 		
 		protected override function addFont ( font:IFont ):IFont
 		{
-			if ( fonts.indexOf ( font ) == -1 ) fonts.push ( font );
-			else throw new Error ( font.name + " font already added.");
+			pushedFontName = font.name;
+			
+			if ( !fonts.some(findFont) ) 
+				fonts.push ( font );
+			
+			font.id = fonts.length;
 			
 			fontFamily = font.name;
 			
@@ -44,28 +54,28 @@ package org.alivepdf.pdf
 			{
 				addedFont = font as EmbeddedFont;	
 				
-				if ( addedFont.differences )
+				if ( addedFont.differences != null )
 				{
-					d = 0;
+					d = -1;
 					nb = differences.length;
-					for ( var j:int = 1; j <= nb ;j++ )
+					for ( var j:int = 0; j < nb ; j++ )
 					{
 						if(differences[j] == addedFont.differences)
 						{
-							d=j;
+							d = j;
 							break;
 						}
 					}
-					if( d == 0 )
+					
+					if( d == -1 )
 					{
-						d = nb+1;
+						d = nb;
 						differences[d] = addedFont.differences;
 					}
+					
 					fonts[fonts.length-1].differences = d;
-				}
-				
+				}		
 			}
-			
 			return font;
 		}
 		
@@ -93,7 +103,7 @@ package org.alivepdf.pdf
 			{
 				if ( font is EmbeddedFont )
 				{
-					if ( font.type == FontType.TRUETYPE )
+					if ( font.type == FontType.TRUE_TYPE )
 					{
 						embeddedFont = font as EmbeddedFont;
 						fontDescription = embeddedFont.description;
@@ -103,7 +113,7 @@ package org.alivepdf.pdf
 						write ('/Length1 '+embeddedFont.originalSize+'>>');
 						write('stream');
 						buffer.writeBytes (embeddedFont.stream);
-						buffer.writeUTFBytes ("\n");
+						buffer.writeByte(0x0A);
 						write("endstream");
 						write('endobj');	
 					}			
@@ -113,17 +123,18 @@ package org.alivepdf.pdf
 				type = font.type;
 				name = font.name;
 				
-				if( type == FontType.CORE )
+				if( type == FontType.TYPE1 )
 				{
 					newObj();
 					write('<</Type /Font');
 					write('/BaseFont /'+name);
 					write('/Subtype /Type1');
-					if( name != FontFamily.SYMBOL && name != FontFamily.ZAPFDINGBATS ) write ('/Encoding /WinAnsiEncoding');
+					if( name != FontFamily.SYMBOL && name != FontFamily.ZAPFDINGBATS ) 
+						write ('/Encoding /WinAnsiEncoding');
 					write('>>');
 					write('endobj');
 				}
-				else if( type == FontType.TYPE1 || type == FontType.TRUETYPE )
+				else if( type == FontType.TRUE_TYPE )
 				{						
 					newObj();
 					write('<</Type /Font');
@@ -135,14 +146,16 @@ package org.alivepdf.pdf
 					write('/FontDescriptor '+(n+2)+' 0 R');
 					if( embeddedFont.encoding != null )
 					{
-						if( embeddedFont.differences != null ) this.write ('/Encoding '+(int(nf)+int(embeddedFont.differences))+' 0 R');
+						if( embeddedFont.differences != null ) 
+							this.write ('/Encoding '+(int(nf)+int(embeddedFont.differences))+' 0 R');
 						this.write ('/Encoding /WinAnsiEncoding');
 					}
 					write('>>');
 					write('endobj');
 					newObj();
 					s = '[ ';
-					for(var i:int=0; i<255; i++) s += (embeddedFont.widths[i])+' ';
+					for(var i:int=0; i<255; i++) 
+						s += (embeddedFont.widths[i])+' ';
 					write(s+']');
 					write('endobj');
 					newObj();
@@ -158,7 +171,7 @@ package org.alivepdf.pdf
 					write('/StemV '+fontDescription.stemV);
 					write('/MissingWidth '+fontDescription.missingWidth);
 					write('/CapHeight '+fontDescription.capHeight);
-					write('/FontFile'+(type=='Type1' ? '' : '2')+' '+(embeddedFont.resourceId-1)+' 0 R>>');
+					write('/FontFile'+(type=='Type1' ? '' : '2')+' '+(embeddedFont.id-1)+' 0 R>>');
 					write('endobj');
 					
 				} else if ( type == 'cidfont0' ) 
@@ -173,14 +186,38 @@ package org.alivepdf.pdf
 			bytes.writeUTFBytes(content);
 			bytes.position = 0;
 			content = this.arrUTF8ToUTF16BE(UTF8StringToArray(content, bytes));
-			return findAndReplace(')','\\)',findAndReplace('(','\\(',findAndReplace('\\','\\\\',content)));
-		} 
+			return super.escapeIt(content);	
+		}
 		
 		protected override function writeStream(stream:String):void
 		{
 			write('stream');
-			for (var i:int = 0; i < stream.length; i++)
-				buffer.writeByte(stream.charCodeAt(i));
+			
+			if(stream.indexOf("\xFE\xFF") > 0)
+			{
+				var chunks:Array = stream.split("\xFE\xFF");
+				var chunk:String;
+				var j:int;
+				var len:int = chunks.length;
+				
+				for(var i:int=0;i<len;i++)
+				{
+					chunk = chunks[i] as String;
+					
+					for (j = 0; j < chunk.length; j++)
+						buffer.writeByte(chunk.charCodeAt(j));
+					
+					if(i == len-1 && chunk != "") continue;
+					buffer.writeByte(0);
+				}
+				buffer.writeByte(0x0A);
+			}
+			else
+			{
+				for (i = 0; i < stream.length; i++)
+					buffer.writeByte(stream.charCodeAt(i));
+			}
+			buffer.writeByte(0x0A);
 			write('endstream');
 		}
 		
@@ -227,8 +264,8 @@ package org.alivepdf.pdf
 		 * @author Nicola Asuni
 		 * @since 1.53.0.TC005 (2005-01-05)
 		 */		 
-		protected function UTF8StringToArray(str:String, strBytes:ByteArray):Array {
-			
+		protected function UTF8StringToArray(str:String, strBytes:ByteArray):Array
+		{	
 			var strArr:Array;
 			var strLen:Number;
 			
@@ -270,7 +307,8 @@ package org.alivepdf.pdf
 			numBytes  = 1; // number of octetc needed to represent the UTF-8 character
 			str += ''; // force $str to be a string
 			//length = str.length;
-			while (strBytes.bytesAvailable > 0) {
+			while (strBytes.bytesAvailable > 0)
+			{
 				char = strBytes.readUnsignedByte();				
 				//for (i = 0; i < length; i++) {
 				//char = str.charCodeAt(i); // get one string character at time
@@ -339,7 +377,7 @@ package org.alivepdf.pdf
 		 *    UTF-16 proceeds as follows. Let U be the character number, no greater
 		 *    than 0x10FFFF.
 		 * 
-		 *    1) If U < 0x10000, encode U as a 16-bit unsigned integer and
+		 *    1) If U is less than 0x10000, encode U as a 16-bit unsigned integer and
 		 *       terminate.
 		 * 
 		 *    2) Let U' = U - 0x10000. Because U is less than or equal to 0x10FFFF,
@@ -367,16 +405,16 @@ package org.alivepdf.pdf
 		 * @since 2.1.000 (2008-01-08)
 		 * @see UTF8ToUTF16BE()
 		 */	
-		protected function arrUTF8ToUTF16BE(unicode:Array, setbom:Boolean=false):String {
+		protected function arrUTF8ToUTF16BE(unicode:Array, setbom:Boolean=false):String
+		{
 			var outStr:String = ''; // string to be returned
 			var w1:Number;
 			var w2:Number;	
 			
 			var bytes:Array = new Array;
 			
-			if (setbom) {
+			if (setbom)
 				outStr += "\xFE\xFF"; // Byte Order Mark (BOM)
-			}
 			
 			var char:uint;
 			
@@ -388,21 +426,32 @@ package org.alivepdf.pdf
 				} else if (char < 0x10000) {
 					bytes.push(char >> 0x08);
 					bytes.push(char & 0xFF);
-					outStr += String.fromCharCode(char >> 0x08);
-					outStr += String.fromCharCode(char & 0xFF);
+					outStr += fromCharCode(char >> 0x08);
+					outStr += fromCharCode(char & 0xFF);
 				} else {
 					char -= 0x10000;
 					w1 = 0xD800 | (char >> 0x10);
 					w2 = 0xDC00 | (char & 0x3FF);	
-					outStr += String.fromCharCode(w1 >> 0x08);
-					outStr += String.fromCharCode(w1 & 0xFF);
-					outStr += String.fromCharCode(w2 >> 0x08);
-					outStr += String.fromCharCode(w2 & 0xFF);
+					outStr += fromCharCode(w1 >> 0x08);
+					outStr += fromCharCode(w1 & 0xFF);
+					outStr += fromCharCode(w2 >> 0x08);
+					outStr += fromCharCode(w2 & 0xFF);
 				}
 			}
-			
-			
+					
 			return outStr;
+		}
+		
+		/**
+		 * 
+		 * @param code
+		 * @return 
+		 * 
+		 */		
+		protected function fromCharCode(code:uint):String
+		{
+			if(code == 0) return "\xFE\xFF"; //return double byte order mark, later to be replaced with 0
+			return String.fromCharCode(code);
 		}
 		
 		/**
@@ -412,7 +461,8 @@ package org.alivepdf.pdf
 		 * @author Andrew Whitehead, Nicola Asuni, Yukihiro Nakadaira
 		 * @since 3.2.000 (2008-06-23)
 		 */
-		protected function putcidfont0( cdiFont:ICidFont ):void {
+		protected function putcidfont0( cdiFont:ICidFont ):void
+		{
 			var cidoffset:int = 31;
 			var cw:Object;
 			var width:String;
@@ -488,7 +538,8 @@ package org.alivepdf.pdf
 		 * @access protected
 		 * @since 4.4.000 (2008-12-07)
 		 */
-		protected function _putfontwidths(cidFont:ICidFont,cidoffset:int=0):void{
+		protected function _putfontwidths(cidFont:ICidFont,cidoffset:int=0):void
+		{
 			var arr:Array = new Array();
 			var cidArr:Array = new Array();
 			for (var tmpCid:Object in cidFont.charactersWidth)

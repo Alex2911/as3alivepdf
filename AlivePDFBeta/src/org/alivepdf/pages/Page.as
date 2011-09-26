@@ -28,8 +28,10 @@ package org.alivepdf.pages
 		private var _k:Number;
 		private var _unit:String;
 		private var _advanceTiming:int;
+		
 	
-		public function Page ( orientation:String, unit:String="Mm", size:Size=null, rotation:Number=0 )
+	
+		public function Page ( orientation:String, unit:String="Mm", size:Size=null, rotation:Number=0)
 		{
 			_orientation = orientation;
 			_rotation = rotation;
@@ -42,7 +44,6 @@ package org.alivepdf.pages
 			
 			if ( _size != null )
 				 _format = _size.dimensions;
-				 
 			else throw new RangeError ("Incorrect dimensions.");
 			
 			_fwPt = _format[0];
@@ -58,6 +59,7 @@ package org.alivepdf.pages
 				h = _fh;
 				_width = wPt;
 				_height = hPt;
+				
 
 			} else if ( _orientation == Orientation.LANDSCAPE )
 			{		
@@ -115,10 +117,14 @@ package org.alivepdf.pages
 		
 		public function setUnit ( unit:String ):String
 		{
-			if ( unit == Unit.POINT ) _k = 1;
-			else if ( unit == Unit.MM ) _k = 72/25.4;
-			else if ( unit == Unit.CM ) _k = 72/2.54;
-			else if ( unit == Unit.INCHES ) _k = 72;
+			if ( unit == Unit.POINT ) 
+				_k = 1;
+			else if ( unit == Unit.MM ) 
+				_k = 72/25.4;
+			else if ( unit == Unit.CM ) 
+				_k = 72/2.54;
+			else if ( unit == Unit.INCHES ) 
+				_k = 72;
 			else throw new RangeError ('Incorrect unit: ' + unit);
 			
 			return unit;	

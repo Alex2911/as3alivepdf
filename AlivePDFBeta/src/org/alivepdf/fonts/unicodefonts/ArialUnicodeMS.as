@@ -1,7 +1,9 @@
 package org.alivepdf.fonts.unicodefonts
 {
-	import flash.utils.getTimer;
-	import mx.core.ByteArrayAsset;
+	import flash.events.Event;
+	import flash.events.EventDispatcher;
+	import flash.utils.ByteArray;
+	
 	import org.alivepdf.fonts.ICidFont;
 
 	public class ArialUnicodeMS implements ICidFont
@@ -57,19 +59,20 @@ package org.alivepdf.fonts.unicodefonts
 		protected var _cidinfo:Object;
 		
 		protected var _uni2cid:Object;
+		protected var dispatcher:EventDispatcher;
 
 		/**
 		 * Constructor
 		 */		
 		public function ArialUnicodeMS(cid:int=CidInfo.CHINESE_SIMPLIFIED)
 		{
-			_id = getTimer();
+			dispatcher = new EventDispatcher();
 			initCID(cid);
 			_charactersWidth = parseMetricsFile(new arialunicid0Metrics);
 		}
 		
-		private function initCID(cid:int):void{
-			
+		private function initCID(cid:int):void
+		{	
 			switch (cid) {
 				case CidInfo.CHINESE_TRADITIONAL :
 					_enc = 'UniCNS-UTF16-H'
@@ -92,9 +95,7 @@ package org.alivepdf.fonts.unicodefonts
 					_uni2cid = parseMetricsFile(new uni2cid_aj16);
 				break;
 			}
-			
 		}
-		
 		
 		/**
 		 * 
@@ -110,7 +111,8 @@ package org.alivepdf.fonts.unicodefonts
 		 * reaplace charactersWidth
 		 *  @param value
 		 * */
-		public function  replaceCharactersWidth(value:Object):void{
+		public function  replaceCharactersWidth(value:Object):void
+		{
 			_charactersWidth = value;
 		}
 		
@@ -122,6 +124,11 @@ package org.alivepdf.fonts.unicodefonts
 		public function get name():String
 		{	
 			return _name;	
+		}
+		
+		public function set name(value:String):void
+		{
+			_name = value;
 		}
 		
 		/**
@@ -181,9 +188,7 @@ package org.alivepdf.fonts.unicodefonts
 		 */		
 		public function get underlinePosition():int
 		{
-			
-			return _underlinePosition;
-			
+			return _underlinePosition;	
 		}
 		
 		/**
@@ -211,55 +216,53 @@ package org.alivepdf.fonts.unicodefonts
 			return "[CidFont name="+name+" type="+ type +"]";	
 		}
 		
-	
-		
 		/**
 		 * 
 		 * @return 
 		 * 
 		 */	
-		public function get desc():Object {
+		public function get desc():Object
+		{
 			return _desc;
 		}
-		
-		
+				
 		/**
 		 * 
 		 * @return 
 		 * 
 		 */	
-		public function get up():int{
+		public function get up():int
+		{
 			return _up;
 		}
-		
-		
+			
 		/**
 		 * 
 		 * @return 
 		 * 
 		 */	
-		public function get ut():int{
+		public function get ut():int
+		{
 			return _ut;
-		}
-		
-		
+		}	
 		
 		/**
 		 * 
 		 * @return 
 		 * 
 		 */	
-		public function get dw():int{
+		public function get dw():int
+		{
 			return _dw;
 		}
-		
 		
 	 	/**
 		 * 
 		 * @return 
 		 * 
 		 */	
-		public function get diff():String {
+		public function get diff():String
+		{
 			
 			return _diff;
 		}
@@ -269,7 +272,8 @@ package org.alivepdf.fonts.unicodefonts
 		 * @return 
 		 * 
 		 */	
-		public function get originalsize():int{
+		public function get originalsize():int
+		{
 			return _originalsize;
 		}
 		
@@ -279,8 +283,8 @@ package org.alivepdf.fonts.unicodefonts
 		 * @return 
 		 * 
 		 */	
-		public function get enc():String {
-			
+		public function get enc():String
+		{
 			return _enc;
 		}
 		
@@ -289,12 +293,13 @@ package org.alivepdf.fonts.unicodefonts
 		 * @return 
 		 * 
 		 */	
-	 	public function get cidinfo():Object{
+	 	public function get cidinfo():Object
+		{
 	 		return _cidinfo;
-	 	};
+	 	}
 	 	
-	 	
-	 	public function get uni2cid():Object{
+	 	public function get uni2cid():Object
+		{
 	 		return _uni2cid;
 	 	}
 	 	
@@ -304,18 +309,49 @@ package org.alivepdf.fonts.unicodefonts
 		 * 
 		 * 
 		 */	
-		private function parseMetricsFile ( metricFile:ByteArrayAsset ):Object{
+		private function parseMetricsFile ( metricFile:ByteArray ):Object
+		{
 			var ret:Object = new Object();
 			var content:String = metricFile.readUTFBytes( metricFile.length );
 			var sourceCodes:Array = content.split(',');
-
 			var arr:Array;
-			for (var i:int = 0; i< sourceCodes.length; i++){
+			var lng:int = sourceCodes.length;
+			
+			for (var i:int = 0; i< lng; i++){
 				
 				arr = (sourceCodes[i] as String).replace('\r\n', '').split('=>');
 				ret[arr[0]] = arr[1];
 			}
 			return ret;
+		}
+		
+		//--
+		//-- IEventDispatcher
+		//--
+		
+		public function addEventListener( type:String, listener:Function, useCapture:Boolean = false, priority:int = 0, useWeakReference:Boolean = false ):void
+		{
+			dispatcher.addEventListener( type, listener, useCapture, priority, useWeakReference );
+		}
+		
+		public function dispatchEvent( event:Event ):Boolean
+		{
+			return dispatcher.dispatchEvent( event );
+		}
+		
+		public function hasEventListener( type:String ):Boolean
+		{
+			return dispatcher.hasEventListener( type );
+		}
+		
+		public function removeEventListener( type:String, listener:Function, useCapture:Boolean = false ):void
+		{
+			dispatcher.removeEventListener( type, listener, useCapture );
+		}
+		
+		public function willTrigger( type:String ):Boolean
+		{
+			return dispatcher.willTrigger( type );
 		}
 		
 	}
